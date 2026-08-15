@@ -11,6 +11,12 @@ export class AuthController {
   async signup(@Body() body: unknown) {
     const data = signupSchema.parse(body);
 
-    return this.authService.signup(data);
+    const result = await this.authService.signup(data);
+
+    return {
+      success: true,
+      message: 'Signup successfull!',
+      data: result,
+    };
   }
 }

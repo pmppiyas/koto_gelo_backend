@@ -11,12 +11,6 @@ export class AuthService {
   ) {}
 
   async signup(data: SignupInput) {
-    const existingUser = await this.usersService.findByUsername(data.username);
-
-    if (existingUser) {
-      throw new ConflictException('Username is already taken');
-    }
-
     const passwordHash = await this.passwordService.hash(data.password);
 
     const user = await this.usersService.create({
