@@ -7,11 +7,12 @@ import {
 import { AccessTokenStrategy } from '#app/common/strategies/access-token.strategy.js';
 
 @Injectable()
-export class AuthGuard implements CanActivate {
+export class AccessTokenGuard implements CanActivate {
   constructor(private readonly accessTokenStrategy: AccessTokenStrategy) {}
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
+
     let token: string | undefined;
 
     const authHeader = request.headers.authorization;

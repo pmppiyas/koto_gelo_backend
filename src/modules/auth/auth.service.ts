@@ -1,17 +1,17 @@
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { SignupInput } from '#app/modules/auth/schemas/signup.schema.js';
 import { SignInInput } from '#app/modules/auth/schemas/signin.schema.js';
 import { UserService } from '#app/modules/user/user.service.js';
 import { PasswordService } from '#app/modules/auth/services/password.service.js';
-import { JwtTokenService } from '#app/modules/auth/services/jwtToken.service.js';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { TokenUtil } from '#app/common/utils/token.util.js';
 import { PrismaService } from '#app/database/prisma.service.js';
+import type { RefreshTokenPayload } from '#app/common/types/refresh-token-payload.type.js';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UserService,
     private readonly passwordService: PasswordService,
-    private readonly jwtTokenService: JwtTokenService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -25,7 +25,7 @@ export class AuthService {
       passwordHash,
     });
 
-    const tokens = this.jwtTokenService.generateTokens({
+    const tokens = TokenUtil.generateTokens({
       id: user.id,
       username: user.username,
       email: user.email,
@@ -45,16 +45,12 @@ export class AuthService {
 
   async signin(data: SignInInput) {
     const user = await this.prisma.user.findUnique({
-      where: {
-        username: data.username,
-      },
+      where: { username: data.username },
     });
 
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException('Invalid credentials');
     }
-
-    const { password: _, ...result } = user;
 
     const isPasswordMatched = await this.passwordService.compare(
       data.password,
@@ -62,22 +58,51 @@ export class AuthService {
     );
 
     if (!isPasswordMatched) {
-      throw new UnauthorizedException('Invalid password');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    const tokens = this.jwtTokenService.generateTokens({
+    const tokens = TokenUtil.generateTokens({
       id: user.id,
       username: user.username,
-      email: user?.email,
+      email: user.email,
     });
 
     return {
-      ...tokens,
       user: {
         id: user.id,
         username: user.username,
-        avatarUrl: user.avatarUrl,
+        email: user.email,
+        phone: user.phone,
+        createdAt: user.createdAt,
       },
+      ...tokens,
+    };
+  }
+
+  async refreshTokens(userPayload: RefreshTokenPayload) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userPayload.id },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
+    const tokens = TokenUtil.generateTokens({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+    });
+
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone,
+        createdAt: user.createdAt,
+      },
+      ...tokens,
     };
   }
 }

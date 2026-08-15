@@ -23,18 +23,18 @@ import {
   personalExpenseQuerySchema,
 } from '#app/modules/expenses/personal/schemas/expense-query.schema.js';
 import { ZodValidation } from '#app/common/pipe/ZodValidation.js';
-import { AuthGuard } from '#app/common/guard/auth.guard.js';
+import { AccessTokenGuard } from '#app/common/guard/access-token.guard.js';
 import { CurrentUser } from '#app/common/decorator/current-user.decorator.js';
-import type { JwtPayload } from '#app/common/interface/auth.interfcae.js';
+import type { AccessTokenPayload } from '#app/common/types/access-token-payload.type.js';
 
 @Controller('expenses/personal')
-@UseGuards(AuthGuard)
+@UseGuards(AccessTokenGuard)
 export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Post()
   async create(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidation(createPersonalExpenseSchema))
     body: CreatePersonalExpenseInput,
   ) {
@@ -52,7 +52,7 @@ export class ExpensesController {
 
   @Get()
   async findAll(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: AccessTokenPayload,
     @Query(new ZodValidation(personalExpenseQuerySchema))
     query: PersonalExpenseQuery,
   ) {
@@ -70,7 +70,7 @@ export class ExpensesController {
 
   @Get(':id')
   async findOne(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
   ) {
     const result = await this.expensesService.findPersonalExpenseById(
@@ -87,7 +87,7 @@ export class ExpensesController {
 
   @Patch(':id')
   async update(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
     @Body(new ZodValidation(updatePersonalExpenseSchema))
     body: UpdatePersonalExpenseInput,
@@ -107,7 +107,7 @@ export class ExpensesController {
 
   @Delete(':id')
   async remove(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
   ) {
     const result = await this.expensesService.removePersonalExpense(

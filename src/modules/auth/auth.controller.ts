@@ -1,4 +1,5 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthService } from '#app/modules/auth/auth.service.js';
 import {
   type SignupInput,
@@ -9,14 +10,46 @@ import {
   signInSchema,
 } from '#app/modules/auth/schemas/signin.schema.js';
 import { ZodValidation } from '#app/common/pipe/ZodValidation.js';
+import { RefreshTokenGuard } from '#app/common/guard/refresh-token.guard.js';
+import { CurrentUser } from '#app/common/decorator/current-user.decorator.js';
+import type { RefreshTokenPayload } from '#app/common/types/refresh-token-payload.type.js';
+
+const ACCESS_TOKEN_COOKIE = 'access_token';
+const REFRESH_TOKEN_COOKIE = 'refresh_token';
+
+const ACCESS_TOKEN_MAX_AGE = 5 * 60 * 60 * 1000;
+const REFRESH_TOKEN_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private setTokenCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+  ) {
+    res.cookie(ACCESS_TOKEN_COOKIE, accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: ACCESS_TOKEN_MAX_AGE,
+    });
+
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: REFRESH_TOKEN_MAX_AGE,
+    });
+  }
+
   @Post('signup')
-  async signup(@Body(new ZodValidation(signupSchema)) body: SignupInput) {
+  async signup(
+    @Res({ passthrough: true }) res: Response,
+    @Body(new ZodValidation(signupSchema)) body: SignupInput,
+  ) {
     const result = await this.authService.signup(body);
+
+    this.setTokenCookies(res, result.accessToken, result.refreshToken);
 
     return {
       success: true,
@@ -26,12 +59,34 @@ export class AuthController {
   }
 
   @Post('signin')
-  async signin(@Body(new ZodValidation(signInSchema)) body: SignInInput) {
+  async signin(
+    @Res({ passthrough: true }) res: Response,
+    @Body(new ZodValidation(signInSchema)) body: SignInInput,
+  ) {
     const result = await this.authService.signin(body);
+
+    this.setTokenCookies(res, result.accessToken, result.refreshToken);
 
     return {
       success: true,
       message: 'Signin successfull!',
+      data: result,
+    };
+  }
+
+  @Post('refresh')
+  @UseGuards(RefreshTokenGuard)
+  async refreshToken(
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: RefreshTokenPayload,
+  ) {
+    const result = await this.authService.refreshTokens(user);
+
+    this.setTokenCookies(res, result.accessToken, result.refreshToken);
+
+    return {
+      success: true,
+      message: 'Token refreshed successfull!',
       data: result,
     };
   }
