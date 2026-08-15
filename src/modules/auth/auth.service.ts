@@ -1,7 +1,7 @@
 import { SignupInput } from '#app/modules/auth/schemas/signup.schema.js';
 import { UserService } from '#app/modules/user/user.service.js';
 import { PasswordService } from '#app/modules/auth/services/password.service.js';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AuthService {
@@ -11,12 +11,12 @@ export class AuthService {
   ) {}
 
   async signup(data: SignupInput) {
-    const passwordHash = await this.passwordService.hash(data.password);
+    const { password, ...rest } = data;
+
+    const passwordHash = await this.passwordService.hash(password);
 
     const user = await this.usersService.create({
-      username: data.username,
-      email: data.email,
-      phone: data.phone,
+      ...rest,
       passwordHash,
     });
 

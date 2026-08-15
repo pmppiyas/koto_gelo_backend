@@ -4,7 +4,7 @@ export const signupSchema = z.object({
   username: z
     .string({
       required_error: 'Username is required',
-      invalid_type_error: 'Username must be a string',
+      invalid_type_error: 'Username must be string',
     })
     .trim()
     .toLowerCase()
