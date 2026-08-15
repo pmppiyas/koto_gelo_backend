@@ -54,6 +54,8 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    const { password: _, ...result } = user;
+
     const isPasswordMatched = await this.passwordService.compare(
       data.password,
       user.password,
@@ -69,6 +71,13 @@ export class AuthService {
       email: user?.email,
     });
 
-    return tokens;
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+      },
+    };
   }
 }
