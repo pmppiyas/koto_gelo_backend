@@ -20,6 +20,14 @@ const envSchema = z.object({
       z.number().int().min(4).max(31),
     )
     .default(12),
+
+  JWT_ACCESS_SECRET: z.string({
+    required_error: 'JWT_ACCESS_SECRET is required',
+  }),
+
+  JWT_REFRESS_SECRET: z.string({
+    required_error: 'JWT_REFRESS_SECRET is required',
+  }),
 });
 
 export const env = envSchema.parse(process.env);
