@@ -5,10 +5,18 @@ import { AuthModule } from '#app/modules/auth/auth.module.js';
 import { UserModule } from '#app/modules/user/user.module.js';
 import { ExpensesModule } from '#app/modules/expenses/expenses.module.js';
 import { GroupModule } from '#app/modules/group/group.module.js';
+import { CacheModule } from '#app/cache/cache.module.js';
 import { Module } from '@nestjs/common';
 
 @Module({
-  imports: [UserModule, AuthModule, ExpensesModule, GroupModule, DatabaseModule],
+  imports: [
+    CacheModule,
+    UserModule,
+    AuthModule,
+    ExpensesModule,
+    GroupModule,
+    DatabaseModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

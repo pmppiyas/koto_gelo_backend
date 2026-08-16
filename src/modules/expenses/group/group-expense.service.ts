@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '#app/database/prisma.service.js';
+import { RedisService } from '#app/cache/redis.service.js';
 import {
   GroupExpenseCalculatorService,
   type CalculatedPayer,
@@ -18,10 +19,30 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class GroupExpenseService {
+  private readonly CACHE_TTL = 300; // 5 minutes
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly calculatorService: GroupExpenseCalculatorService,
   ) {}
+
+  private async invalidateGroupCache(groupId: string, expenseId?: string) {
+    const promises: Promise<void>[] = [
+      this.redis.deleteByPattern('group_expenses:*'),
+      this.redis.deleteByPattern(`group_history:${groupId}:*`),
+      this.redis.delete(`group_summary:${groupId}`),
+      this.redis.delete(`group_balance:${groupId}`),
+      this.redis.delete(`group_settlements:${groupId}`),
+      this.redis.deleteByPattern('overall_summary:*'),
+    ];
+
+    if (expenseId) {
+      promises.push(this.redis.delete(`group_expense:${expenseId}`));
+    }
+
+    await Promise.all(promises);
+  }
 
   private async verifyGroupMembership(userId: string, groupId: string) {
     const group = await this.prisma.group.findUnique({
@@ -95,8 +116,8 @@ export class GroupExpenseService {
       Array.from(activeUserIds),
     );
 
-    return this.prisma.$transaction(async (tx) => {
-      const expense = await tx.expense.create({
+    const expense = await this.prisma.$transaction(async (tx) => {
+      return tx.expense.create({
         data: {
           userId,
           groupId: data.groupId,
@@ -170,9 +191,11 @@ export class GroupExpenseService {
           },
         },
       });
-
-      return expense;
     });
+
+    await this.invalidateGroupCache(data.groupId);
+
+    return expense;
   }
 
   async findAll(userId: string, query: GroupExpenseQuery) {
@@ -192,6 +215,13 @@ export class GroupExpenseService {
           'You are not a member of the requested group',
         );
       }
+    }
+
+    const cacheKey = `group_expenses:${userId}:${JSON.stringify(query)}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
     }
 
     const {
@@ -286,7 +316,7 @@ export class GroupExpenseService {
       }),
     ]);
 
-    return {
+    const result = {
       expenses,
       pagination: {
         total,
@@ -295,9 +325,21 @@ export class GroupExpenseService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    await this.redis.set(cacheKey, result, this.CACHE_TTL);
+
+    return result;
   }
 
   async findOne(userId: string, expenseId: string) {
+    const cacheKey = `group_expense:${expenseId}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      await this.verifyGroupMembership(userId, cached.groupId);
+      return cached;
+    }
+
     const expense = await this.prisma.expense.findUnique({
       where: { id: expenseId },
       include: {
@@ -350,6 +392,8 @@ export class GroupExpenseService {
 
     await this.verifyGroupMembership(userId, expense.groupId);
 
+    await this.redis.set(cacheKey, expense, this.CACHE_TTL);
+
     return expense;
   }
 
@@ -382,11 +426,12 @@ export class GroupExpenseService {
       data.payers !== undefined ||
       data.participants !== undefined;
 
-    const targetAmount = data.amount !== undefined ? data.amount : Number(expense.amount);
+    const targetAmount =
+      data.amount !== undefined ? data.amount : Number(expense.amount);
     const targetSplitType =
       data.splitType !== undefined
         ? data.splitType
-        : (expense.splitType || 'EQUAL');
+        : expense.splitType || 'EQUAL';
 
     let payersToUpdate: CalculatedPayer[] | undefined = undefined;
     let participantsToUpdate: CalculatedParticipant[] | undefined = undefined;
@@ -403,7 +448,11 @@ export class GroupExpenseService {
 
       payersToUpdate = this.calculatorService.calculatePayers(
         targetAmount,
-        data.payers || expense.payers.map((p) => ({ userId: p.userId, amount: Number(p.amount) })),
+        data.payers ||
+          expense.payers.map((p: any) => ({
+            userId: p.userId,
+            amount: Number(p.amount),
+          })),
         expense.userId,
       );
 
@@ -411,7 +460,7 @@ export class GroupExpenseService {
         targetAmount,
         targetSplitType as any,
         data.participants ||
-          expense.participants.map((p) => ({
+          expense.participants.map((p: any) => ({
             userId: p.userId,
             shareAmount: Number(p.shareAmount),
           })),
@@ -419,7 +468,7 @@ export class GroupExpenseService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedExpense = await this.prisma.$transaction(async (tx) => {
       if (needsRecalculation && payersToUpdate && participantsToUpdate) {
         await tx.expensePayer.deleteMany({ where: { expenseId } });
         await tx.expenseParticipant.deleteMany({ where: { expenseId } });
@@ -502,6 +551,10 @@ export class GroupExpenseService {
         },
       });
     });
+
+    await this.invalidateGroupCache(expense.groupId!, expenseId);
+
+    return updatedExpense;
   }
 
   async remove(userId: string, expenseId: string) {
@@ -523,15 +576,26 @@ export class GroupExpenseService {
       );
     }
 
-    return this.prisma.expense.update({
+    const cancelledExpense = await this.prisma.expense.update({
       where: { id: expenseId },
       data: {
         status: 'CANCELLED',
       },
     });
+
+    await this.invalidateGroupCache(expense.groupId!, expenseId);
+
+    return cancelledExpense;
   }
 
   async getOverallSummary(userId: string) {
+    const cacheKey = `overall_summary:${userId}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const userGroups = await this.prisma.groupMember.findMany({
       where: {
         userId,
@@ -558,7 +622,9 @@ export class GroupExpenseService {
     let totalMyShare = 0;
 
     for (const exp of activeExpenses) {
-      totalGroupExpenses = Number((totalGroupExpenses + Number(exp.amount)).toFixed(2));
+      totalGroupExpenses = Number(
+        (totalGroupExpenses + Number(exp.amount)).toFixed(2),
+      );
 
       for (const p of exp.payers) {
         if (p.userId === userId) {
@@ -568,7 +634,9 @@ export class GroupExpenseService {
 
       for (const part of exp.participants) {
         if (part.userId === userId) {
-          totalMyShare = Number((totalMyShare + Number(part.shareAmount)).toFixed(2));
+          totalMyShare = Number(
+            (totalMyShare + Number(part.shareAmount)).toFixed(2),
+          );
         }
       }
     }
@@ -602,7 +670,7 @@ export class GroupExpenseService {
       },
     });
 
-    return {
+    const result = {
       totalGroupExpenses,
       totalPaidByMe,
       totalMyShare,
@@ -610,10 +678,21 @@ export class GroupExpenseService {
       groupsCount: userGroupIds.length,
       recentExpenses,
     };
+
+    await this.redis.set(cacheKey, result, this.CACHE_TTL);
+
+    return result;
   }
 
   async getGroupSummary(userId: string, groupId: string) {
     const { group } = await this.verifyGroupMembership(userId, groupId);
+
+    const cacheKey = `group_summary:${groupId}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
 
     const activeExpenses = await this.prisma.expense.findMany({
       where: {
@@ -646,7 +725,9 @@ export class GroupExpenseService {
 
       for (const part of exp.participants) {
         if (part.userId === userId) {
-          myTotalShare = Number((myTotalShare + Number(part.shareAmount)).toFixed(2));
+          myTotalShare = Number(
+            (myTotalShare + Number(part.shareAmount)).toFixed(2),
+          );
         }
       }
     }
@@ -658,7 +739,7 @@ export class GroupExpenseService {
       }),
     );
 
-    return {
+    const result = {
       groupId: group.id,
       groupName: group.name,
       totalExpense,
@@ -668,10 +749,21 @@ export class GroupExpenseService {
       myNetBalance: Number((myTotalPaid - myTotalShare).toFixed(2)),
       categoryBreakdown,
     };
+
+    await this.redis.set(cacheKey, result, this.CACHE_TTL);
+
+    return result;
   }
 
   async getGroupBalance(userId: string, groupId: string) {
     await this.verifyGroupMembership(userId, groupId);
+
+    const cacheKey = `group_balance:${groupId}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
 
     const members = await this.prisma.groupMember.findMany({
       where: {
@@ -702,27 +794,44 @@ export class GroupExpenseService {
     });
 
     const memberList = members.map((m) => m.user);
-    return this.calculatorService.calculateMemberBalances(
+    const balances = this.calculatorService.calculateMemberBalances(
       memberList,
       activeExpenses,
     );
+
+    await this.redis.set(cacheKey, balances, this.CACHE_TTL);
+
+    return balances;
   }
 
   async getGroupSettlements(userId: string, groupId: string) {
+    const cacheKey = `group_settlements:${groupId}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const balances = await this.getGroupBalance(userId, groupId);
-    return this.calculatorService.calculateSettlements(balances);
+    const settlements = this.calculatorService.calculateSettlements(balances);
+
+    await this.redis.set(cacheKey, settlements, this.CACHE_TTL);
+
+    return settlements;
   }
 
   async settlePayment(userId: string, data: SettlePaymentInput) {
     const targetGroupId = data.groupId;
     if (!targetGroupId) {
-      throw new BadRequestException('Group ID is required to record settlement');
+      throw new BadRequestException(
+        'Group ID is required to record settlement',
+      );
     }
 
     await this.verifyGroupMembership(userId, targetGroupId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const settlementExpense = await tx.expense.create({
+    const settlementExpense = await this.prisma.$transaction(async (tx) => {
+      return tx.expense.create({
         data: {
           userId,
           groupId: targetGroupId,
@@ -781,9 +890,11 @@ export class GroupExpenseService {
           },
         },
       });
-
-      return settlementExpense;
     });
+
+    await this.invalidateGroupCache(targetGroupId);
+
+    return settlementExpense;
   }
 
   async getGroupHistory(
@@ -792,6 +903,13 @@ export class GroupExpenseService {
     query: GroupExpenseQuery,
   ) {
     await this.verifyGroupMembership(userId, groupId);
+
+    const cacheKey = `group_history:${groupId}:${JSON.stringify(query)}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
 
     const { page, limit, category, status, type, from, to, search } = query;
     const skip = (page - 1) * limit;
@@ -861,7 +979,7 @@ export class GroupExpenseService {
       }),
     ]);
 
-    return {
+    const result = {
       history,
       pagination: {
         total,
@@ -870,5 +988,9 @@ export class GroupExpenseService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    await this.redis.set(cacheKey, result, this.CACHE_TTL);
+
+    return result;
   }
 }

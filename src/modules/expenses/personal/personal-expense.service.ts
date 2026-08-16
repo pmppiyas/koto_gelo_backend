@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '#app/database/prisma.service.js';
+import { RedisService } from '#app/cache/redis.service.js';
 import { CreatePersonalExpenseInput } from '#app/modules/expenses/personal/schemas/create-personal-expense.schema.js';
 import { UpdatePersonalExpenseInput } from '#app/modules/expenses/personal/schemas/update-personal-expense.schema.js';
 import { PersonalExpenseQuery } from '#app/modules/expenses/personal/schemas/expense-query.schema.js';
@@ -7,10 +8,30 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PersonalExpenseService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly CACHE_TTL = 300; // 5 minutes
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
+
+  private async invalidateUserCache(userId: string, expenseId?: string) {
+    const promises: Promise<void>[] = [
+      this.redis.deleteByPattern(`personal_expenses:${userId}:*`),
+      this.redis.deleteByPattern(`expenses_summary:${userId}:*`),
+    ];
+
+    if (expenseId) {
+      promises.push(
+        this.redis.delete(`personal_expense:${userId}:${expenseId}`),
+      );
+    }
+
+    await Promise.all(promises);
+  }
 
   async create(userId: string, data: CreatePersonalExpenseInput) {
-    return this.prisma.expense.create({
+    const expense = await this.prisma.expense.create({
       data: {
         userId,
         type: 'PERSONAL',
@@ -26,9 +47,20 @@ export class PersonalExpenseService {
         account: true,
       },
     });
+
+    await this.invalidateUserCache(userId);
+
+    return expense;
   }
 
   async findAll(userId: string, query: PersonalExpenseQuery) {
+    const cacheKey = `personal_expenses:${userId}:${JSON.stringify(query)}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const {
       page,
       limit,
@@ -80,7 +112,7 @@ export class PersonalExpenseService {
       }),
     ]);
 
-    return {
+    const result = {
       expenses,
       pagination: {
         total,
@@ -89,9 +121,20 @@ export class PersonalExpenseService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    await this.redis.set(cacheKey, result, this.CACHE_TTL);
+
+    return result;
   }
 
   async findOne(userId: string, id: string) {
+    const cacheKey = `personal_expense:${userId}:${id}`;
+    const cached = await this.redis.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const expense = await this.prisma.expense.findFirst({
       where: {
         id,
@@ -107,13 +150,15 @@ export class PersonalExpenseService {
       throw new NotFoundException('Expense not found');
     }
 
+    await this.redis.set(cacheKey, expense, this.CACHE_TTL);
+
     return expense;
   }
 
   async update(userId: string, id: string, data: UpdatePersonalExpenseInput) {
     await this.findOne(userId, id);
 
-    return this.prisma.expense.update({
+    const updatedExpense = await this.prisma.expense.update({
       where: { id },
       data: {
         ...(data.amount !== undefined && { amount: data.amount }),
@@ -133,13 +178,21 @@ export class PersonalExpenseService {
         account: true,
       },
     });
+
+    await this.invalidateUserCache(userId, id);
+
+    return updatedExpense;
   }
 
   async remove(userId: string, id: string) {
     await this.findOne(userId, id);
 
-    return this.prisma.expense.delete({
+    const deleted = await this.prisma.expense.delete({
       where: { id },
     });
+
+    await this.invalidateUserCache(userId, id);
+
+    return deleted;
   }
 }
