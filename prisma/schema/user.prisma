@@ -18,6 +18,8 @@ model User {
   expenses            Expense[]
   groupMembers        GroupMember[]
   createdGroups       Group[]              @relation("CreatedGroups")
+  sentInvitations     GroupInvitation[]    @relation("SentGroupInvitations")
+  receivedInvitations GroupInvitation[]    @relation("ReceivedGroupInvitations")
 
   @@index([isActive])
   @@index([createdAt])

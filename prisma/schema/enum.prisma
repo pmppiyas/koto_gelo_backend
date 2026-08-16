@@ -56,3 +56,15 @@ enum AccountStatus {
   ACTIVE
   ARCHIVED
 }
+
+enum GroupInvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum GroupInvitationType {
+  INVITATION
+  JOIN_REQUEST
+}

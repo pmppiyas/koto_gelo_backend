@@ -1,15 +1,16 @@
 model Group {
-  id          String        @id @default(uuid()) @db.Uuid
-  name        String        @db.VarChar(100)
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(100)
   description String?
-  type        GroupType     @default(OTHER)
-  status      GroupStatus   @default(ACTIVE)
-  createdById String        @db.Uuid
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  type        GroupType         @default(OTHER)
+  status      GroupStatus       @default(ACTIVE)
+  createdById String            @db.Uuid
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   expenses    Expense[]
   members     GroupMember[]
-  createdBy   User          @relation("CreatedGroups", fields: [createdById], references: [id])
+  invitations GroupInvitation[]
+  createdBy   User              @relation("CreatedGroups", fields: [createdById], references: [id])
 
   @@index([createdById])
   @@index([type])
@@ -35,4 +36,32 @@ model GroupMember {
   @@index([groupId])
   @@index([status])
   @@map("group_members")
+}
+
+model GroupInvitation {
+  id String @id @default(uuid()) @db.Uuid
+
+  groupId String @db.Uuid
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  invitedById String @db.Uuid
+  invitedBy   User   @relation("SentGroupInvitations", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  inviteeId String @db.Uuid
+  invitee   User   @relation("ReceivedGroupInvitations", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  type   GroupInvitationType   @default(INVITATION)
+  status GroupInvitationStatus @default(PENDING)
+
+  expiresAt   DateTime?
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([inviteeId])
+  @@index([status])
+  @@index([groupId, inviteeId, status])
+  @@map("group_invitations")
 }
