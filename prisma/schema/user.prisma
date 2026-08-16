@@ -1,34 +1,23 @@
 model User {
-  id String @id @default(uuid()) @db.Uuid
-
-  username String @unique @db.VarChar(30)
-
-  email String? @unique @db.VarChar(255)
-  phone String? @unique @db.VarChar(20)
-
-  firstName String? @db.VarChar(100)
-  lastName  String? @db.VarChar(100)
-
-  avatarUrl String? @db.Text
-
-  password String @db.Text
-
-  isActive   Boolean @default(true)
-  isVerified Boolean @default(false)
-
-  lastLoginAt DateTime?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  createdGroups       Group[]              @relation("CreatedGroups")
-  groupMembers        GroupMember[]
-  expenses            Expense[]
-  expensePayers       ExpensePayer[]
-  expenseParticipants ExpenseParticipant[]
+  id                  String               @id @default(uuid()) @db.Uuid
+  username            String               @unique @db.VarChar(30)
+  name                String?              @db.VarChar(100)
+  email               String?              @unique @db.VarChar(255)
+  phone               String?              @unique @db.VarChar(20)
+  avatarUrl           String?
+  password            String
+  isActive            Boolean              @default(true)
+  isVerified          Boolean              @default(false)
+  lastLoginAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
   accounts            Account[]
+  expenseParticipants ExpenseParticipant[]
+  expensePayers       ExpensePayer[]
+  expenses            Expense[]
+  groupMembers        GroupMember[]
+  createdGroups       Group[]              @relation("CreatedGroups")
 
   @@index([isActive])
   @@index([createdAt])
