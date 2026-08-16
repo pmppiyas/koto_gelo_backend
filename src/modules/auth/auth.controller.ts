@@ -42,6 +42,18 @@ export class AuthController {
     });
   }
 
+  private clearTokenCookies(res: Response) {
+    res.clearCookie(ACCESS_TOKEN_COOKIE, {
+      httpOnly: true,
+      sameSite: 'lax',
+    });
+
+    res.clearCookie(REFRESH_TOKEN_COOKIE, {
+      httpOnly: true,
+      sameSite: 'lax',
+    });
+  }
+
   @Post('signup')
   async signup(
     @Res({ passthrough: true }) res: Response,
@@ -70,6 +82,19 @@ export class AuthController {
     return {
       success: true,
       message: 'Signin successfull!',
+      data: result,
+    };
+  }
+
+  @Post('logout')
+  async logout(@Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.logout();
+
+    this.clearTokenCookies(res);
+
+    return {
+      success: true,
+      message: 'Logout successfull!',
       data: result,
     };
   }

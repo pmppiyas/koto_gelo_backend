@@ -105,4 +105,8 @@ export class AuthService {
       ...tokens,
     };
   }
+
+  async logout() {
+    return null;
+  }
 }
