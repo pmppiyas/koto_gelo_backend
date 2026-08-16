@@ -30,6 +30,7 @@ enum GroupMemberStatus {
 enum ExpenseType {
   PERSONAL
   GROUP
+  SETTLEMENT
 }
 
 enum SplitType {
@@ -42,6 +43,7 @@ enum SplitType {
 enum ExpenseStatus {
   ACTIVE
   CANCELLED
+  SETTLED
 }
 
 enum AccountType {
