@@ -20,7 +20,10 @@ const REFRESH_TOKEN_COOKIE = 'refresh_token';
 const ACCESS_TOKEN_MAX_AGE = 5 * 60 * 60 * 1000;
 const REFRESH_TOKEN_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 
-@Controller('auth')
+@Controller({
+  path: 'auth',
+  version: '1',
+})
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

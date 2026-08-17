@@ -75,7 +75,7 @@ export class GroupExpenseCalculatorService {
     participants: ParticipantInput[] | undefined,
     allGroupMemberUserIds: string[],
   ): CalculatedParticipant[] {
-    const participantList =
+    const participantList: ParticipantInput[] =
       participants && participants.length > 0
         ? participants
         : allGroupMemberUserIds.map((userId) => ({ userId }));

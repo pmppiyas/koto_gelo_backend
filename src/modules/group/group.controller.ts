@@ -27,7 +27,10 @@ import { AccessTokenGuard } from '#app/common/guard/access-token.guard.js';
 import { CurrentUser } from '#app/common/decorator/current-user.decorator.js';
 import type { AccessTokenPayload } from '#app/common/types/access-token-payload.type.js';
 
-@Controller('group')
+@Controller({
+  path: 'group',
+  version: '1',
+})
 @UseGuards(AccessTokenGuard)
 export class GroupController {
   constructor(private readonly groupService: GroupService) {}

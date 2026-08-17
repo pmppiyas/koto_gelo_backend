@@ -22,7 +22,10 @@ import { AccessTokenGuard } from '#app/common/guard/access-token.guard.js';
 import { CurrentUser } from '#app/common/decorator/current-user.decorator.js';
 import type { AccessTokenPayload } from '#app/common/types/access-token-payload.type.js';
 
-@Controller('group/invitations')
+@Controller({
+  path: 'group/invitations',
+  version: '1',
+})
 @UseGuards(AccessTokenGuard)
 export class MyInvitationController {
   constructor(private readonly invitationService: InvitationService) {}
@@ -97,7 +100,10 @@ export class MyInvitationController {
   }
 }
 
-@Controller('group/:groupId/invitations')
+@Controller({
+  path: 'group/:groupId/invitations',
+  version: '1',
+})
 @UseGuards(AccessTokenGuard)
 export class InvitationController {
   constructor(private readonly invitationService: InvitationService) {}

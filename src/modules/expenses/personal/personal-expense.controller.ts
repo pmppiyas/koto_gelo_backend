@@ -27,7 +27,10 @@ import { AccessTokenGuard } from '#app/common/guard/access-token.guard.js';
 import { CurrentUser } from '#app/common/decorator/current-user.decorator.js';
 import type { AccessTokenPayload } from '#app/common/types/access-token-payload.type.js';
 
-@Controller('expenses/personal')
+@Controller({
+  path: 'expenses/personal',
+  version: '1',
+})
 @UseGuards(AccessTokenGuard)
 export class PersonalExpenseController {
   constructor(
