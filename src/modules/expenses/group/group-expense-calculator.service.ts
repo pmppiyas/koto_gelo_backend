@@ -19,6 +19,7 @@ export interface MemberBalanceInfo {
   username: string;
   name: string | null;
   avatarUrl: string | null;
+  totalDeposited: number;
   totalPaid: number;
   totalShare: number;
   netBalance: number;
@@ -217,19 +218,36 @@ export class GroupExpenseCalculatorService {
       payers: Array<{ userId: string; amount: any }>;
       participants: Array<{ userId: string; shareAmount: any }>;
     }>,
+    deposits: Array<{
+      userId: string;
+      amount: any;
+    }> = [],
   ): MemberBalanceInfo[] {
     const balanceMap = new Map<
       string,
-      { totalPaid: number; totalShare: number }
+      { totalDeposited: number; totalPaid: number; totalShare: number }
     >();
 
     for (const m of members) {
-      balanceMap.set(m.id, { totalPaid: 0, totalShare: 0 });
+      balanceMap.set(m.id, { totalDeposited: 0, totalPaid: 0, totalShare: 0 });
+    }
+
+    for (const dep of deposits) {
+      const current = balanceMap.get(dep.userId) || {
+        totalDeposited: 0,
+        totalPaid: 0,
+        totalShare: 0,
+      };
+      current.totalDeposited = Number(
+        (current.totalDeposited + Number(dep.amount)).toFixed(2),
+      );
+      balanceMap.set(dep.userId, current);
     }
 
     for (const exp of expenses) {
       for (const payer of exp.payers) {
         const current = balanceMap.get(payer.userId) || {
+          totalDeposited: 0,
           totalPaid: 0,
           totalShare: 0,
         };
@@ -241,6 +259,7 @@ export class GroupExpenseCalculatorService {
 
       for (const part of exp.participants) {
         const current = balanceMap.get(part.userId) || {
+          totalDeposited: 0,
           totalPaid: 0,
           totalShare: 0,
         };
@@ -252,13 +271,21 @@ export class GroupExpenseCalculatorService {
     }
 
     return members.map((m) => {
-      const data = balanceMap.get(m.id) || { totalPaid: 0, totalShare: 0 };
-      const net = Number((data.totalPaid - data.totalShare).toFixed(2));
+      const data = balanceMap.get(m.id) || {
+        totalDeposited: 0,
+        totalPaid: 0,
+        totalShare: 0,
+      };
+      const totalContributed = Number(
+        (data.totalDeposited + data.totalPaid).toFixed(2),
+      );
+      const net = Number((totalContributed - data.totalShare).toFixed(2));
       return {
         userId: m.id,
         username: m.username,
         name: m.name,
         avatarUrl: m.avatarUrl,
+        totalDeposited: data.totalDeposited,
         totalPaid: data.totalPaid,
         totalShare: data.totalShare,
         netBalance: net,

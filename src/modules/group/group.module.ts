@@ -6,16 +6,19 @@ import {
   MyInvitationController,
 } from '#app/modules/group/invitation/invitation.controller.js';
 import { InvitationService } from '#app/modules/group/invitation/invitation.service.js';
+import { GroupDepositController } from '#app/modules/group/group-deposit.controller.js';
+import { GroupDepositService } from '#app/modules/group/group-deposit.service.js';
 import { AuthModule } from '#app/modules/auth/auth.module.js';
 
 @Module({
   imports: [AuthModule],
   controllers: [
     GroupController,
+    GroupDepositController,
     MyInvitationController,
     InvitationController,
   ],
-  providers: [GroupService, InvitationService],
-  exports: [GroupService, InvitationService],
+  providers: [GroupService, GroupDepositService, InvitationService],
+  exports: [GroupService, GroupDepositService, InvitationService],
 })
 export class GroupModule {}

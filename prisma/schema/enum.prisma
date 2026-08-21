@@ -70,3 +70,17 @@ enum GroupInvitationType {
   INVITATION
   JOIN_REQUEST
 }
+
+enum DepositMethod {
+  CASH
+  BKASH
+  NAGAD
+  ROCKET
+  BANK
+  OTHER
+}
+
+enum DepositStatus {
+  ACTIVE
+  CANCELLED
+}

@@ -20,6 +20,8 @@ model User {
   createdGroups       Group[]              @relation("CreatedGroups")
   sentInvitations     GroupInvitation[]    @relation("SentGroupInvitations")
   receivedInvitations GroupInvitation[]    @relation("ReceivedGroupInvitations")
+  memberDeposits      GroupDeposit[]       @relation("MemberDeposits")
+  recordedDeposits    GroupDeposit[]       @relation("RecordedDeposits")
 
   @@index([isActive])
   @@index([createdAt])

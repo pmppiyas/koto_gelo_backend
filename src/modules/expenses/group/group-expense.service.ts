@@ -19,7 +19,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class GroupExpenseService {
-  private readonly CACHE_TTL = 300; // 5 minutes
+  private readonly CACHE_TTL = 300;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -694,21 +694,39 @@ export class GroupExpenseService {
       return cached;
     }
 
-    const activeExpenses = await this.prisma.expense.findMany({
-      where: {
-        groupId,
-        status: 'ACTIVE',
-      },
-      include: {
-        payers: true,
-        participants: true,
-      },
-    });
+    const [activeExpenses, activeDeposits] = await Promise.all([
+      this.prisma.expense.findMany({
+        where: {
+          groupId,
+          status: 'ACTIVE',
+        },
+        include: {
+          payers: true,
+          participants: true,
+        },
+      }),
+      this.prisma.groupDeposit.findMany({
+        where: {
+          groupId,
+          status: 'ACTIVE',
+        },
+      }),
+    ]);
 
     let totalExpense = 0;
+    let totalDeposit = 0;
     let myTotalPaid = 0;
+    let myTotalDeposited = 0;
     let myTotalShare = 0;
     const categoryMap = new Map<string, number>();
+
+    for (const dep of activeDeposits) {
+      const depAmount = Number(dep.amount);
+      totalDeposit = Number((totalDeposit + depAmount).toFixed(2));
+      if (dep.userId === userId) {
+        myTotalDeposited = Number((myTotalDeposited + depAmount).toFixed(2));
+      }
+    }
 
     for (const exp of activeExpenses) {
       const expAmount = Number(exp.amount);
@@ -739,14 +757,25 @@ export class GroupExpenseService {
       }),
     );
 
+    const remainingFund = Number((totalDeposit - totalExpense).toFixed(2));
+    const myTotalContributed = Number(
+      (myTotalDeposited + myTotalPaid).toFixed(2),
+    );
+    const myNetBalance = Number((myTotalContributed - myTotalShare).toFixed(2));
+
     const result = {
       groupId: group.id,
       groupName: group.name,
+      totalDeposit,
       totalExpense,
+      remainingFund,
       totalExpenseCount: activeExpenses.length,
+      totalDepositCount: activeDeposits.length,
+      myTotalDeposited,
       myTotalPaid,
+      myTotalContributed,
       myTotalShare,
-      myNetBalance: Number((myTotalPaid - myTotalShare).toFixed(2)),
+      myNetBalance,
       categoryBreakdown,
     };
 
@@ -782,26 +811,59 @@ export class GroupExpenseService {
       },
     });
 
-    const activeExpenses = await this.prisma.expense.findMany({
-      where: {
-        groupId,
-        status: 'ACTIVE',
-      },
-      include: {
-        payers: true,
-        participants: true,
-      },
-    });
+    const [activeExpenses, activeDeposits] = await Promise.all([
+      this.prisma.expense.findMany({
+        where: {
+          groupId,
+          status: 'ACTIVE',
+        },
+        include: {
+          payers: true,
+          participants: true,
+        },
+      }),
+      this.prisma.groupDeposit.findMany({
+        where: {
+          groupId,
+          status: 'ACTIVE',
+        },
+      }),
+    ]);
 
     const memberList = members.map((m) => m.user);
     const balances = this.calculatorService.calculateMemberBalances(
       memberList,
       activeExpenses,
+      activeDeposits,
     );
 
-    await this.redis.set(cacheKey, balances, this.CACHE_TTL);
+    const totalExpenses = activeExpenses.reduce(
+      (sum, e) => sum + Number(e.amount),
+      0,
+    );
+    const totalDeposits = activeDeposits.reduce(
+      (sum, d) => sum + Number(d.amount),
+      0,
+    );
+    const remainingFund = Number((totalDeposits - totalExpenses).toFixed(2));
 
-    return balances;
+    const userBalance = balances.find((b) => b.userId === userId);
+
+    const response = {
+      totalExpenses: Number(totalExpenses.toFixed(2)),
+      totalDeposits: Number(totalDeposits.toFixed(2)),
+      remainingFund,
+      totalMembers: members.length,
+      yourDeposited: userBalance?.totalDeposited || 0,
+      yourSpending: userBalance?.totalPaid || 0,
+      yourShare: userBalance?.totalShare || 0,
+      netBalance: userBalance?.netBalance || 0,
+      balances,
+    };
+
+    await this.redis.set(cacheKey, response, this.CACHE_TTL);
+
+    return response;
   }
 
   async getGroupSettlements(userId: string, groupId: string) {
